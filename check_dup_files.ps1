@@ -1,6 +1,7 @@
 param(
     [string]$folder='G:\Music 2017 BackUp',
-    [string]$csvFile='C:\scripts\file_dups.csv'
+    [string]$csvFile='C:\scripts\file_dups.csv',
+    [int16]$batchSz=1000  
 )  # Modify this to be the path to the root of your iTunes directory
 
 function Get-FileHash {
@@ -50,14 +51,23 @@ function Get-FileHash {
     Write-Output $sb.ToString()
 }
 
+Write-Output "$(Get-Date -Format u) - Starting processing."
+Clear-Content -Path $csvFile -Force
 
 $files = @{}
+
+$numFiles=0
+$numDistinctFiles=0
 
 Get-ChildItem -LiteralPath $folder -File -Force -Recurse |  # You may want to filter on specific file types here;  I'm not sure what iTunes uses.
 Where-Object { $_.Extension -match 'm4a|m4p|m4v|mp3' } |
 Where-Object { $_ -is [System.IO.FileInfo] } |
 ForEach-Object {
     try {
+        $numFiles++
+        if ($numFiles % $batchSz -eq 0) {
+            Write-Output "$(Get-Date -Format u) - $numFiles files processed..."
+        }
         $hash = $_ | Get-FileHash
     } catch {
         Write-Error -ErrorRecord $_
@@ -65,7 +75,11 @@ ForEach-Object {
     }
 
     if ($files.ContainsKey($hash) -eq $false) {
+        $numDistinctFiles++
         $files[$hash] = New-Object 'System.Collections.Generic.List[System.String]'
+        if ($numDistinctFiles % $batchSz -eq 0) {
+            Write-Output "$(Get-Date -Format u) - $numDistinctFiles distinct files added to hash..."
+        }
     } else {
         # In this sample, I'm just identifying duplicates by adding all their names to a list.
         # You can have the script delete duplicates here, if you wish, but keep in mind that
@@ -77,6 +91,8 @@ ForEach-Object {
     $files[$hash].Add($_.FullName)
 }
 
+Write-Output "$(Get-Date -Format u) - Done searching through $numFiles files with $numDistinctFiles distinct files found."
+
 Write-Host "   "
 Write-Host "### DONE FINDING ALL POTENTIAL DUPS ###"
 Write-Host "### NOW REPORTING ON THEM ###"
@@ -84,8 +100,8 @@ Write-Host "   "
 
 # For example purposes, output the list of duplicates (since the script didn't delete them)
 
-$x=0
 foreach ($entry in $files.GetEnumerator()) {
+    $x=0
     if ($entry.Value.Count -gt 1) {
         Write-Host "*!*!*!*! Potential duplicates:"
         foreach ($path in $entry.Value) {
@@ -98,7 +114,7 @@ foreach ($entry in $files.GetEnumerator()) {
             if ($x -eq 2) {
                 $thirdFile=$path
             }
-		    x++
+		    $x++
             Write-Host "  $path"
         }
         Write-Host ""
@@ -107,3 +123,4 @@ foreach ($entry in $files.GetEnumerator()) {
         $x=0
     }
 }
+Write-Output "$(Get-Date -Format u) - Processing Complete!"
