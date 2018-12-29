@@ -101,8 +101,12 @@ Write-Host "   "
 # For example purposes, output the list of duplicates (since the script didn't delete them)
 
 foreach ($entry in $files.GetEnumerator()) {
-    $x=0
     if ($entry.Value.Count -gt 1) {
+        $x=0
+        $firstFile=$null
+        $secondFile=$null
+        $thirdFile=$null
+     
         Write-Host "*!*!*!*! Potential duplicates:"
         foreach ($path in $entry.Value) {
             if ($x -eq 0 ) {
