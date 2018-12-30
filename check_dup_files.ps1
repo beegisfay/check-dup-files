@@ -1,5 +1,6 @@
 param(
     [string]$folder='G:\Music 2017 BackUp',
+    [string]$folder2=$null,
     [string]$csvFile='C:\scripts\file_dups.csv',
     [int16]$batchSz=1000  
 )  # Modify this to be the path to the root of your iTunes directory
@@ -51,45 +52,67 @@ function Get-FileHash {
     Write-Output $sb.ToString()
 }
 
+function Get-FileDups {
+    [CmdletBinding()]
+    Param(
+        [Parameter(Mandatory=$True,
+                  Position=0)]
+        [String]$FilePath
+    )
+    
+    Write-Debug "[Get-FileDups] with param [$FilePath] passed in   for processing."
+    Get-ChildItem -LiteralPath $FilePath -File -Force -Recurse |  # You may want to filter on specific file types here;  I'm not sure what iTunes uses.
+    Where-Object { $_.Extension -match 'm4a|m4p|m4v|mp3' } |
+    Where-Object { $_ -is [System.IO.FileInfo] } |
+    ForEach-Object {
+        Write-Debug "[Get-FileDups] Inside file loop"
+        try {
+            $script:numFiles++
+            if ($script:numFiles % $script:batchSz -eq 0) {
+                Write-Output "$(Get-Date -Format u) - $script:numFiles files processed..."
+            }
+            $script:hash = $_ | Get-FileHash
+        } catch {
+            Write-Error -ErrorRecord $_
+            return   # Can look confusing, but ForEach-Object "loops" use return, not continue
+        }
+
+        if ($script:files.ContainsKey($script:hash) -eq $false) {
+            $script:numDistinctFiles++
+            $script:files[$script:hash] = New-Object 'System.Collections.Generic.List[System.String]'
+            if ($script:numDistinctFiles % $script:batchSz -eq 0) {
+                Write-Output "$(Get-Date -Format u) - $script:numDistinctFiles distinct files added to hash..."
+            }
+        } else {
+            # In this sample, I'm just identifying duplicates by adding all their names to a list.
+            # You can have the script delete duplicates here, if you wish, but keep in mind that
+            # just because two files have identical hashes, that's not a guarantee that they have
+            # identical contents;  it is possible for two different inputs to produce the same
+            # hash code.
+        }
+
+        $script:files[$script:hash].Add($_.FullName)
+    }
+}
+
 Write-Output "$(Get-Date -Format u) - Starting processing."
-Clear-Content -Path $csvFile -Force
+
+if (Test-Path -LiteralPath $csvFile) 
+{
+  Remove-Item -LiteralPath $csvFile -Force
+}
+    # Clear-Content -Path $csvFile -Force
 
 $files = @{}
 
 $numFiles=0
 $numDistinctFiles=0
-
-Get-ChildItem -LiteralPath $folder -File -Force -Recurse |  # You may want to filter on specific file types here;  I'm not sure what iTunes uses.
-Where-Object { $_.Extension -match 'm4a|m4p|m4v|mp3' } |
-Where-Object { $_ -is [System.IO.FileInfo] } |
-ForEach-Object {
-    try {
-        $numFiles++
-        if ($numFiles % $batchSz -eq 0) {
-            Write-Output "$(Get-Date -Format u) - $numFiles files processed..."
-        }
-        $hash = $_ | Get-FileHash
-    } catch {
-        Write-Error -ErrorRecord $_
-        return   # Can look confusing, but ForEach-Object "loops" use return, not continue
-    }
-
-    if ($files.ContainsKey($hash) -eq $false) {
-        $numDistinctFiles++
-        $files[$hash] = New-Object 'System.Collections.Generic.List[System.String]'
-        if ($numDistinctFiles % $batchSz -eq 0) {
-            Write-Output "$(Get-Date -Format u) - $numDistinctFiles distinct files added to hash..."
-        }
-    } else {
-        # In this sample, I'm just identifying duplicates by adding all their names to a list.
-        # You can have the script delete duplicates here, if you wish, but keep in mind that
-        # just because two files have identical hashes, that's not a guarantee that they have
-        # identical contents;  it is possible for two different inputs to produce the same
-        # hash code.
-    }
-
-    $files[$hash].Add($_.FullName)
-}
+Write-Host "Calling Get-FileDups with the path set to [$folder]"
+Get-FileDups -FilePath "$folder"
+Write-Output "$(Get-Date -Format u) - Completed process $folder."
+Write-Output "Calling Get-FileDups with the path set to [$folder2]"
+Get-FileDups -FilePath "$folder2"
+Write-Output "$(Get-Date -Format u) - Starting processing $folder2."
 
 Write-Output "$(Get-Date -Format u) - Done searching through $numFiles files with $numDistinctFiles distinct files found."
 
